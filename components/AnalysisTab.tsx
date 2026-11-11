@@ -23,8 +23,18 @@ const sumByCategory = (rows: Pick<Expense, "amount" | "category">[]) => {
 const fmtShort = (iso: string) =>
   new Date(iso).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
-// 円グラフ（ドーナツ）: 半径 15.9155 の円の円周が 100 になるので、割合をそのまま dasharray に使える
-const R = 15.9155;
+// 円グラフ（ドーナツ）: pathLength=100 を指定するので、割合をそのまま dasharray に使える
+const R = 13.5; // リングの中心線の半径（viewBox は 36 四方、中心は 18,18）
+const STROKE = 8; // リングの太さ
+const LABEL_SIZE = 2.6; // 区画に入れるカテゴリ名の文字サイズ
+const CIRCUMFERENCE = 2 * Math.PI * R;
+
+// 区画の弧の長さに収まる文字数にカテゴリ名を切り詰める。2 文字に満たない小さな区画は名前を出さない
+const labelFor = (name: string, pct: number) => {
+  const fit = Math.floor(((pct / 100) * CIRCUMFERENCE) / LABEL_SIZE);
+  if (fit < 2) return null;
+  return name.length <= fit ? name : name.slice(0, fit - 1) + "…";
+};
 
 export default function AnalysisTab({ expenses, prevExpenses, colorOf }: Props) {
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -85,26 +95,49 @@ export default function AnalysisTab({ expenses, prevExpenses, colorOf }: Props) 
         <h2 className="mb-3 text-sm font-semibold text-slate-500">カテゴリ別</h2>
 
         {positiveSum > 0 && (
-          <div className="relative mx-auto mb-5 h-52 w-52">
+          <div className="relative mx-auto mb-5 h-60 w-60">
             <svg viewBox="0 0 36 36" className="h-full w-full" role="img" aria-label="カテゴリ別の円グラフ">
-              <circle cx="18" cy="18" r={R} fill="none" stroke="#f1f5f9" strokeWidth="4" />
+              <circle cx="18" cy="18" r={R} fill="none" stroke="#f1f5f9" strokeWidth={STROKE} />
               {positive.map((r) => {
                 const pct = (r.amount / positiveSum) * 100;
-                const seg = positive.length > 1 ? Math.max(pct - 0.5, 0) : pct; // 区切りの隙間
+                const seg = positive.length > 1 ? Math.max(pct - 0.6, 0) : pct; // 区切りの隙間
+                const dim = open.size > 0 && !open.has(r.category);
+                const angle = ((cumulative + pct / 2) / 100) * 360; // 12 時から時計回りの角度
+                const rad = (angle * Math.PI) / 180;
+                const x = 18 + R * Math.sin(rad);
+                const y = 18 - R * Math.cos(rad);
+                const rotate = angle > 90 && angle < 270 ? angle - 180 : angle; // 下半分は文字が逆さにならないよう反転
+                const label = labelFor(r.category, pct);
                 const el = (
-                  <circle
-                    key={r.category}
-                    cx="18"
-                    cy="18"
-                    r={R}
-                    fill="none"
-                    stroke={colorOf(r.category)}
-                    strokeWidth={open.has(r.category) ? 5 : 4}
-                    strokeDasharray={`${seg} ${100 - seg}`}
-                    strokeDashoffset={25 - cumulative} // 12 時の位置から時計回り
-                    opacity={open.size === 0 || open.has(r.category) ? 1 : 0.35}
-                    style={{ transition: "opacity 0.2s, stroke-width 0.2s" }}
-                  />
+                  <g key={r.category} opacity={dim ? 0.35 : 1} style={{ transition: "opacity 0.2s" }}>
+                    <circle
+                      cx="18"
+                      cy="18"
+                      r={R}
+                      fill="none"
+                      stroke={colorOf(r.category)}
+                      strokeWidth={open.has(r.category) ? STROKE + 1 : STROKE}
+                      pathLength={100}
+                      strokeDasharray={`${seg} ${100 - seg}`}
+                      strokeDashoffset={25 - cumulative} // 12 時の位置から時計回り
+                    />
+                    {label && (
+                      <text
+                        x={x}
+                        y={y}
+                        transform={`rotate(${rotate} ${x} ${y})`}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fontSize={LABEL_SIZE}
+                        fontWeight={600}
+                        fill="#ffffff"
+                        fillOpacity={0.8}
+                        pointerEvents="none"
+                      >
+                        {label}
+                      </text>
+                    )}
+                  </g>
                 );
                 cumulative += pct;
                 return el;
