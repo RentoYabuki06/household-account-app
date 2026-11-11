@@ -40,6 +40,7 @@ export default function ExpenseApp() {
   const [tab, setTab] = useState<Tab>("history");
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [prevExpenses, setPrevExpenses] = useState<Pick<Expense, "amount" | "category">[]>([]);
+  const [sortKey, setSortKey] = useState<"date-desc" | "date-asc" | "amount-desc" | "amount-asc">("date-desc");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -132,6 +133,17 @@ export default function ExpenseApp() {
         if (!error && data && data.length > 0) setCategories(data as Category[]);
       });
   }, []);
+
+  const sortedExpenses = useMemo(() => {
+    const list = [...expenses];
+    const t = (e: Expense) => new Date(e.used_at).getTime();
+    switch (sortKey) {
+      case "date-asc": return list.sort((a, b) => t(a) - t(b));
+      case "amount-desc": return list.sort((a, b) => b.amount - a.amount || t(b) - t(a));
+      case "amount-asc": return list.sort((a, b) => a.amount - b.amount || t(b) - t(a));
+      default: return list.sort((a, b) => t(b) - t(a));
+    }
+  }, [expenses, sortKey]);
 
   const monthTotal = useMemo(() => expenses.reduce((s, e) => s + e.amount, 0), [expenses]);
   const isCurrentMonth = month.getTime() === monthStart(new Date()).getTime();
@@ -363,14 +375,27 @@ export default function ExpenseApp() {
 
             {/* Expense List */}
             <section>
-              <h2 className="mb-2 px-1 text-sm font-semibold text-slate-500">履歴</h2>
+              <div className="mb-2 flex items-center justify-between px-1">
+                <h2 className="text-sm font-semibold text-slate-500">履歴</h2>
+                <select
+                  value={sortKey}
+                  onChange={(ev) => setSortKey(ev.target.value as typeof sortKey)}
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600"
+                  aria-label="並び順"
+                >
+                  <option value="date-desc">日付が新しい順</option>
+                  <option value="date-asc">日付が古い順</option>
+                  <option value="amount-desc">金額が高い順</option>
+                  <option value="amount-asc">金額が低い順</option>
+                </select>
+              </div>
               {loading ? (
                 <p className="p-4 text-center text-sm text-slate-400">読み込み中…</p>
               ) : expenses.length === 0 ? (
                 <p className="p-4 text-center text-sm text-slate-400">この月の支出はありません</p>
               ) : (
                 <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl bg-white shadow-sm">
-                  {expenses.map((e) => {
+                  {sortedExpenses.map((e) => {
                     const auto = e.source === "auto";
                     const cat = e.category || UNCATEGORIZED;
                     return (
