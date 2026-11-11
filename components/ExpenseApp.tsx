@@ -13,6 +13,7 @@ import {
 import { yen } from "@/lib/format";
 import AnalysisTab from "@/components/AnalysisTab";
 import TrendTab from "@/components/TrendTab";
+import ReceiptScanner, { type ReceiptResult } from "@/components/ReceiptScanner";
 
 const METHODS: PaymentMethod[] = ["PayPay", "現金", "その他"];
 
@@ -60,6 +61,9 @@ export default function ExpenseApp() {
   const [method, setMethod] = useState<PaymentMethod>("PayPay");
   const [category, setCategory] = useState<string>("食費");
   const [usedDate, setUsedDate] = useState(() => toDateStr(new Date()));
+  const [usedTime, setUsedTime] = useState<string | null>(null); // レシートから読み取った時刻（手入力のときは null）
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const [scanNotes, setScanNotes] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
@@ -166,7 +170,7 @@ export default function ExpenseApp() {
     if (!n || n <= 0) return;
     setSubmitting(true);
     const { error } = await supabase.from("expenses").insert({
-      used_at: toUsedAt(usedDate, null),
+      used_at: toUsedAt(usedDate, usedTime),
       store: store.trim() || category,
       amount: n,
       category,
@@ -180,6 +184,41 @@ export default function ExpenseApp() {
     // 追加した支出が見えるよう、その日付の月に切り替えて再取得する
     setMonth(monthStart(new Date(`${usedDate}T00:00:00`)));
     setUsedDate(toDateStr(new Date()));
+    setUsedTime(null);
+    setScanNotes([]);
+    setReceiptPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+  };
+
+  // レシートの読み取り結果を、入力フォームに反映する（確認・編集してから「追加」を押す）
+  const applyReceipt = (r: ReceiptResult, previewUrl: string) => {
+    const notes: string[] = [];
+    if (r.amount) setAmount(String(r.amount));
+    else notes.push("金額を読み取れませんでした。入力してください");
+    if (r.store) setStore(r.store);
+    else notes.push("店名を読み取れませんでした");
+    if (r.date) {
+      setUsedDate(r.date);
+      setUsedTime(r.time);
+    } else {
+      notes.push("日付を読み取れませんでした。今日の日付のままです");
+    }
+    if (r.category && categoryNames.includes(r.category)) setCategory(r.category);
+    if (r.payment_method === "クレジットカード") {
+      setMethod("その他");
+      notes.push(
+        "支払いがクレジットカードです。三井住友カードなら Gmail の自動取り込みと二重になるので、追加しないでください"
+      );
+    } else if (r.payment_method && METHODS.includes(r.payment_method as PaymentMethod)) {
+      setMethod(r.payment_method as PaymentMethod);
+    }
+    setScanNotes(notes);
+    setReceiptPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return previewUrl;
+    });
   };
 
   const addCategory = async () => {
@@ -297,6 +336,26 @@ export default function ExpenseApp() {
           <>
             {/* Quick Input Form */}
             <form onSubmit={add} className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
+              <ReceiptScanner categories={categoryNames} onResult={applyReceipt} />
+              {receiptPreview && (
+                <div className="flex items-start gap-3 rounded-lg bg-slate-50 p-2">
+                  <a href={receiptPreview} target="_blank" rel="noreferrer" className="shrink-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={receiptPreview} alt="撮影したレシート" className="h-24 w-auto rounded border border-slate-200" />
+                  </a>
+                  <p className="text-xs text-slate-500">
+                    読み取り結果を入力欄に反映しました。写真と見比べて、違うところを直してから「追加」を押してください。
+                    写真をタップすると拡大できます。
+                  </p>
+                </div>
+              )}
+              {scanNotes.length > 0 && (
+                <ul className="space-y-1 rounded-lg bg-amber-50 p-2 text-xs text-amber-700">
+                  {scanNotes.map((n) => (
+                    <li key={n}>・{n}</li>
+                  ))}
+                </ul>
+              )}
               <input
                 type="number"
                 inputMode="numeric"
@@ -318,7 +377,11 @@ export default function ExpenseApp() {
                 type="date"
                 value={usedDate}
                 max={toDateStr(new Date())}
-                onChange={(e) => e.target.value && setUsedDate(e.target.value)}
+                onChange={(e) => {
+                  if (!e.target.value) return;
+                  setUsedDate(e.target.value);
+                  setUsedTime(null); // 日付を直したら、読み取った時刻は使わない
+                }}
                 aria-label="日付"
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 outline-none focus:border-emerald-500"
               />
