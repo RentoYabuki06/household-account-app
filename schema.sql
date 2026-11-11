@@ -42,3 +42,8 @@ alter table public.expenses enable row level security;
 create policy "allowed select" on public.expenses for select to authenticated using (public.is_allowed());
 create policy "allowed insert" on public.expenses for insert to authenticated with check (public.is_allowed());
 create policy "allowed delete" on public.expenses for delete to authenticated using (public.is_allowed());
+
+-- Data API の「Automatically expose new tables」を OFF にしたプロジェクト向けの明示的な権限付与。
+-- anon には何も付けない。ブラウザ(authenticated)は閲覧・追加・削除のみ、GAS(service_role)は全操作。
+grant select, insert, delete on public.expenses to authenticated;
+grant all on public.expenses to service_role;
