@@ -102,7 +102,11 @@ export async function POST(req: Request) {
   const { data: allowed, error: rpcError } = await supabase.rpc("consume_receipt_scan", {
     max_per_day: limit,
   });
-  if (rpcError) return fail(500, "回数の確認に失敗しました");
+  if (rpcError) {
+    // 原因の切り分け用に、エラーの種類（コード）を画面にも出す。秘密情報は含まれない
+    console.error("consume_receipt_scan failed:", rpcError.code, rpcError.message);
+    return fail(500, `回数の確認に失敗しました（${rpcError.code || rpcError.message.slice(0, 40)}）`);
+  }
   if (!allowed) return fail(429, "今日の読み取り回数の上限に達しました");
 
   // 4. Gemini に画像を渡して、決められた形の JSON で受け取る
