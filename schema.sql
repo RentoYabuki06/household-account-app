@@ -13,37 +13,16 @@ create table if not exists public.expenses (
 
 create index if not exists expenses_used_at_idx on public.expenses (used_at desc);
 
--- Row Level Security: Google ログイン済みかつ allowed_users に載ったメールのみ操作可能。
--- anon キー単体、および許可リスト外の Google アカウントではアクセスできない。
+-- Row Level Security: ログインなしの個人利用向け設定。
+-- anon キー（ブラウザに公開される）を知っていれば誰でも閲覧・追加・削除できる。
+-- 利用履歴の閲覧は許容する前提。守りたくなったら Supabase Auth を導入し to authenticated に絞る。
 -- GAS からの書き込みは service_role キー（RLS をバイパス）を使う。
--- 作成後に自分の Gmail を手動登録すること（メールはリポジトリに書かない）:
---   insert into public.allowed_users (email) values ('あなたのGmail');
-create table if not exists public.allowed_users (email text primary key);
-alter table public.allowed_users enable row level security; -- ポリシーなし = クライアントからは読み書き不可
-
-create or replace function public.is_allowed()
-returns boolean
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select exists (
-    select 1 from public.allowed_users
-    where lower(email) = lower(auth.jwt() ->> 'email')
-  );
-$$;
-
-revoke all on function public.is_allowed() from public, anon;
-grant execute on function public.is_allowed() to authenticated;
-
 alter table public.expenses enable row level security;
 
-create policy "allowed select" on public.expenses for select to authenticated using (public.is_allowed());
-create policy "allowed insert" on public.expenses for insert to authenticated with check (public.is_allowed());
-create policy "allowed delete" on public.expenses for delete to authenticated using (public.is_allowed());
+create policy "anon select" on public.expenses for select to anon using (true);
+create policy "anon insert" on public.expenses for insert to anon with check (true);
+create policy "anon delete" on public.expenses for delete to anon using (true);
 
 -- Data API の「Automatically expose new tables」を OFF にしたプロジェクト向けの明示的な権限付与。
--- anon には何も付けない。ブラウザ(authenticated)は閲覧・追加・削除のみ、GAS(service_role)は全操作。
-grant select, insert, delete on public.expenses to authenticated;
+grant select, insert, delete on public.expenses to anon;
 grant all on public.expenses to service_role;

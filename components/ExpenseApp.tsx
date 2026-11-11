@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { LogOut, Plus, Trash2, Wallet } from "lucide-react";
+import { Plus, Trash2, Wallet } from "lucide-react";
 import { supabase, type Expense, type PaymentMethod } from "@/lib/supabase";
 
 const METHODS: PaymentMethod[] = ["PayPay", "現金", "その他"];
@@ -16,7 +16,7 @@ const fmtDate = (iso: string) =>
     minute: "2-digit",
   });
 
-export default function ExpenseApp({ onSignOut }: { onSignOut: () => void }) {
+export default function ExpenseApp() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -86,18 +86,9 @@ export default function ExpenseApp({ onSignOut }: { onSignOut: () => void }) {
     <main className="mx-auto max-w-md pb-[env(safe-area-inset-bottom)]">
       {/* Header */}
       <header className="bg-emerald-600 px-5 pb-6 pt-[calc(env(safe-area-inset-top)+1.5rem)] text-white">
-        <div className="flex items-center justify-between">
-          <p className="flex items-center gap-1.5 text-sm opacity-90">
-            <Wallet size={16} /> {new Date().getMonth() + 1}月の支出
-          </p>
-          <button
-            onClick={onSignOut}
-            aria-label="ログアウト"
-            className="p-1 opacity-80 active:opacity-100"
-          >
-            <LogOut size={18} />
-          </button>
-        </div>
+        <p className="flex items-center gap-1.5 text-sm opacity-90">
+          <Wallet size={16} /> {new Date().getMonth() + 1}月の支出
+        </p>
         <p className="mt-1 text-4xl font-bold tracking-tight">{yen(monthTotal)}</p>
       </header>
 
