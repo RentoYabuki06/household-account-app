@@ -8,7 +8,7 @@ import type { Expense } from "@/lib/supabase";
 
 type Props = {
   expenses: Expense[];
-  prevExpenses: Pick<Expense, "amount" | "category">[];
+  month: Date;
   colorOf: (category: string) => string;
 };
 
@@ -18,6 +18,15 @@ const sumByCategory = (rows: Pick<Expense, "amount" | "category">[]) => {
   const m = new Map<string, number>();
   for (const r of rows) m.set(catOf(r), (m.get(catOf(r)) ?? 0) + r.amount);
   return m;
+};
+
+const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
+
+// カレンダーのマスに入れる短い金額表記（¥1,234 → 1,234、1万以上は 1.2万）
+const compactYen = (n: number) => {
+  const a = Math.abs(n);
+  const body = a >= 10000 ? `${Math.round(a / 1000) / 10}万` : a.toLocaleString("ja-JP");
+  return n < 0 ? `-${body}` : body;
 };
 
 const fmtShort = (iso: string) =>
@@ -36,14 +45,30 @@ const labelFor = (name: string, pct: number) => {
   return name.length <= fit ? name : name.slice(0, fit - 1) + "…";
 };
 
-export default function AnalysisTab({ expenses, prevExpenses, colorOf }: Props) {
+export default function AnalysisTab({ expenses, month, colorOf }: Props) {
   const [open, setOpen] = useState<Set<string>>(new Set());
 
-  const { rows, total, prevTotal, byCategory } = useMemo(() => {
+  // 日ごとの合計（月の 1 日が何曜日か、何日まであるかも一緒に求める）
+  const calendar = useMemo(() => {
+    const y = month.getFullYear();
+    const m = month.getMonth();
+    const days = new Date(y, m + 1, 0).getDate();
+    const offset = new Date(y, m, 1).getDay();
+    const daily = new Map<number, number>();
+    for (const e of expenses) {
+      const d = new Date(e.used_at).getDate();
+      daily.set(d, (daily.get(d) ?? 0) + e.amount);
+    }
+    const cells: (number | null)[] = [...Array(offset).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)];
+    while (cells.length % 7 !== 0) cells.push(null);
+    const max = Math.max(0, ...[...daily.values()]);
+    return { cells, daily, max };
+  }, [expenses, month]);
+
+  const { rows, total, byCategory } = useMemo(() => {
     const cur = sumByCategory(expenses);
-    const prev = sumByCategory(prevExpenses);
     const rows = [...cur.entries()]
-      .map(([category, amount]) => ({ category, amount, prev: prev.get(category) ?? 0 }))
+      .map(([category, amount]) => ({ category, amount }))
       .sort((a, b) => b.amount - a.amount); // 金額の多い順
     const byCategory = new Map<string, Expense[]>();
     for (const e of expenses) {
@@ -53,16 +78,14 @@ export default function AnalysisTab({ expenses, prevExpenses, colorOf }: Props) 
     return {
       rows,
       total: expenses.reduce((s, e) => s + e.amount, 0),
-      prevTotal: prevExpenses.reduce((s, e) => s + e.amount, 0),
       byCategory,
     };
-  }, [expenses, prevExpenses]);
+  }, [expenses]);
 
   // 構成比は、プラスの支出だけで計算する（返品などのマイナスは除く）
   const positive = rows.filter((r) => r.amount > 0);
   const positiveSum = positive.reduce((s, r) => s + r.amount, 0);
   const uncategorized = rows.find((r) => r.category === UNCATEGORIZED)?.amount ?? 0;
-  const diff = total - prevTotal;
 
   const toggle = (category: string) =>
     setOpen((prev) => {
@@ -72,25 +95,49 @@ export default function AnalysisTab({ expenses, prevExpenses, colorOf }: Props) 
       return next;
     });
 
-  if (expenses.length === 0) {
-    return <p className="p-4 text-center text-sm text-slate-400">この月の支出はありません</p>;
-  }
-
   let cumulative = 0;
 
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl bg-white p-4 shadow-sm">
-        <p className="text-xs text-slate-500">前月との比較</p>
-        <p className="mt-1 text-sm">
-          前月 {yen(prevTotal)} →{" "}
-          <span className={diff > 0 ? "font-semibold text-red-600" : "font-semibold text-emerald-600"}>
-            {diff > 0 ? "+" : diff < 0 ? "-" : ""}
-            {yen(Math.abs(diff))}
-          </span>
-        </p>
+      <section className="rounded-2xl bg-white p-3 shadow-sm">
+        <h2 className="mb-2 px-1 text-sm font-semibold text-slate-500">日別の支出</h2>
+        <div className="grid grid-cols-7 gap-px text-center text-[10px] text-slate-400">
+          {WEEKDAYS.map((w, i) => (
+            <div key={w} className={i === 0 ? "text-red-400" : i === 6 ? "text-sky-500" : ""}>
+              {w}
+            </div>
+          ))}
+        </div>
+        <div className="mt-1 grid grid-cols-7 gap-1">
+          {calendar.cells.map((d, i) => {
+            if (d === null) return <div key={i} />;
+            const amt = calendar.daily.get(d);
+            const alpha = amt && amt > 0 && calendar.max > 0 ? 0.08 + 0.32 * (amt / calendar.max) : 0; // 支出が多い日ほど濃く
+            return (
+              <div
+                key={i}
+                className="flex h-12 flex-col items-center rounded-md bg-slate-50 py-1"
+                style={alpha ? { background: `rgba(239, 68, 68, ${alpha})` } : undefined}
+              >
+                <span className="text-[10px] leading-none text-slate-500">{d}</span>
+                {amt !== undefined && (
+                  <span
+                    className={`mt-1 text-[10px] font-semibold leading-none ${amt < 0 ? "text-emerald-600" : "text-slate-700"}`}
+                  >
+                    {compactYen(amt)}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </section>
 
+      {expenses.length === 0 && (
+        <p className="p-4 text-center text-sm text-slate-400">この月の支出はありません</p>
+      )}
+
+      {expenses.length > 0 && (
       <section className="rounded-2xl bg-white p-4 shadow-sm">
         <h2 className="mb-3 text-sm font-semibold text-slate-500">カテゴリ別</h2>
 
@@ -167,7 +214,7 @@ export default function AnalysisTab({ expenses, prevExpenses, colorOf }: Props) 
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm">{r.category}</span>
                     <span className="block text-xs text-slate-400">
-                      {items.length}件 ・ 前月 {yen(r.prev)}
+                      {items.length}件
                     </span>
                   </span>
                   {r.amount > 0 && positiveSum > 0 && (
@@ -200,6 +247,7 @@ export default function AnalysisTab({ expenses, prevExpenses, colorOf }: Props) 
           })}
         </ul>
       </section>
+      )}
 
       {uncategorized > 0 && (
         <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-700">

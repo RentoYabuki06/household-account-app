@@ -51,7 +51,6 @@ export default function ExpenseApp() {
   const [month, setMonth] = useState(() => monthStart(new Date()));
   const [tab, setTab] = useState<Tab>("history");
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [prevExpenses, setPrevExpenses] = useState<Pick<Expense, "amount" | "category">[]>([]);
   const [sortKey, setSortKey] = useState<"date-desc" | "date-asc" | "amount-desc" | "amount-asc">("date-desc");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -111,24 +110,19 @@ export default function ExpenseApp() {
     const id = ++requestId.current;
     const from = month.toISOString();
     const to = monthStart(month, 1).toISOString();
-    const prevFrom = monthStart(month, -1).toISOString();
 
-    const [cur, prev] = await Promise.all([
-      supabase
-        .from("expenses")
-        .select("*")
-        .gte("used_at", from)
-        .lt("used_at", to)
-        .order("used_at", { ascending: false }),
-      supabase.from("expenses").select("amount,category").gte("used_at", prevFrom).lt("used_at", from),
-    ]);
+    const cur = await supabase
+      .from("expenses")
+      .select("*")
+      .gte("used_at", from)
+      .lt("used_at", to)
+      .order("used_at", { ascending: false });
     if (id !== requestId.current) return; // 月を切り替えた後の古い応答は捨てる
 
-    if (cur.error || prev.error) setError((cur.error ?? prev.error)!.message);
+    if (cur.error) setError(cur.error.message);
     else {
       setError(null);
       setExpenses(cur.data as Expense[]);
-      setPrevExpenses(prev.data as Pick<Expense, "amount" | "category">[]);
     }
     setLoading(false);
   }, [month]);
@@ -330,7 +324,7 @@ export default function ExpenseApp() {
           loading ? (
             <p className="p-4 text-center text-sm text-slate-400">読み込み中…</p>
           ) : (
-            <AnalysisTab expenses={expenses} prevExpenses={prevExpenses} colorOf={colorOf} />
+            <AnalysisTab expenses={expenses} month={month} colorOf={colorOf} />
           )
         ) : (
           <>
