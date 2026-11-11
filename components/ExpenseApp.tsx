@@ -33,6 +33,17 @@ const SWIPE_RATIO = 1.5;
 // 画面の端（ブラウザの「戻る」ジェスチャーと競合する範囲）から始まった操作は無視する
 const EDGE_GUARD = 24;
 
+const pad2 = (n: number) => String(n).padStart(2, "0");
+// 端末の時刻（日本時間）での YYYY-MM-DD
+const toDateStr = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+// 入力された日付（と時刻）から used_at を作る。今日なら現在時刻、過去の日付で時刻がなければ 12:00
+const toUsedAt = (dateStr: string, timeStr: string | null) => {
+  if (timeStr) return new Date(`${dateStr}T${timeStr}:00`).toISOString();
+  if (dateStr === toDateStr(new Date())) return new Date().toISOString();
+  return new Date(`${dateStr}T12:00:00`).toISOString();
+};
+
 const monthStart = (d: Date, offset = 0) => new Date(d.getFullYear(), d.getMonth() + offset, 1);
 
 export default function ExpenseApp() {
@@ -48,6 +59,7 @@ export default function ExpenseApp() {
   const [store, setStore] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("PayPay");
   const [category, setCategory] = useState<string>("食費");
+  const [usedDate, setUsedDate] = useState(() => toDateStr(new Date()));
   const [submitting, setSubmitting] = useState(false);
 
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
@@ -154,7 +166,7 @@ export default function ExpenseApp() {
     if (!n || n <= 0) return;
     setSubmitting(true);
     const { error } = await supabase.from("expenses").insert({
-      used_at: new Date().toISOString(),
+      used_at: toUsedAt(usedDate, null),
       store: store.trim() || category,
       amount: n,
       category,
@@ -165,7 +177,9 @@ export default function ExpenseApp() {
     if (error) return setError(error.message);
     setAmount("");
     setStore("");
-    setMonth(monthStart(new Date())); // 追加した支出が見えるよう、今月に切り替えて再取得する
+    // 追加した支出が見えるよう、その日付の月に切り替えて再取得する
+    setMonth(monthStart(new Date(`${usedDate}T00:00:00`)));
+    setUsedDate(toDateStr(new Date()));
   };
 
   const addCategory = async () => {
@@ -299,6 +313,14 @@ export default function ExpenseApp() {
                 value={store}
                 onChange={(e) => setStore(e.target.value)}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2.5 outline-none focus:border-emerald-500"
+              />
+              <input
+                type="date"
+                value={usedDate}
+                max={toDateStr(new Date())}
+                onChange={(e) => e.target.value && setUsedDate(e.target.value)}
+                aria-label="日付"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 outline-none focus:border-emerald-500"
               />
               <div className="flex gap-2">
                 {METHODS.map((m) => (
