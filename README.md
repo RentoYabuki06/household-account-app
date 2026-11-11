@@ -3,14 +3,23 @@
 三井住友カードの利用通知メールを GAS で自動取り込みし、PayPay・現金は手入力できる PWA 家計簿。
 Next.js + Supabase + Google Apps Script。
 
+## 使う前に必ず読むこと
+
+> **このアプリにはログインがありません。** 自分でデプロイした Vercel の URL を知っている人は、誰でも支出（金額・店名・日付）を閲覧・追加・編集・削除できます。
+> - **URL を SNS・ブログ・スクリーンショットなどに載せないでください。**
+> - 他人に見られて困る場合は使わないでください。
+> - 自分用の Supabase・Vercel を各自で用意する前提です。他人のデータと混ぜないでください。
+
 ## セットアップ
 
-1. **Supabase**: プロジェクトを作り、SQL Editor で `schema.sql` を実行。Project URL と publishable key（`sb_publishable_…`）を控える。
-2. **Vercel**: この GitHub リポジトリを Import し、環境変数 `NEXT_PUBLIC_SUPABASE_URL` と `NEXT_PUBLIC_SUPABASE_ANON_KEY`（publishable key）を設定してデプロイ。
-3. **GAS**: `gas/Code.gs` を貼り、スクリプト プロパティに `SUPABASE_URL` と `SUPABASE_SERVICE_ROLE_KEY`（secret key `sb_secret_…`）を登録。`setupTrigger()` を一度実行。
+必須は 1・2・4、任意は 3 と「レシート読み取り」です。この順に進めます。
+
+1. **Supabase（必須）**: プロジェクトを作り、SQL Editor で `schema.sql` を実行。Project URL と publishable key（`sb_publishable_…`）を控える。
+2. **Vercel（必須）**: この GitHub リポジトリ（Fork でも可）を Import し、環境変数 `NEXT_PUBLIC_SUPABASE_URL` と `NEXT_PUBLIC_SUPABASE_ANON_KEY`（publishable key）を設定してデプロイ。
+3. **GAS（任意・三井住友カード専用）**: 三井住友カードの利用通知メール（送信元 `statement@vpass.ne.jp`）を自動取り込みする。**ほかのカード会社のメールには対応していない**。使わなければ PayPay・現金などの手入力だけで動く。`gas/Code.gs` を貼り、スクリプト プロパティに `SUPABASE_URL` と `SUPABASE_SERVICE_ROLE_KEY`（secret key `sb_secret_…`）を登録。`setupTrigger()` を一度実行。
 4. **スマホ**: Vercel の URL を Safari で開き、共有メニューから「ホーム画面に追加」。
 
-ログインはない。URL と publishable key を知っている人は誰でも閲覧・追加・削除できる（個人利用の前提）。
+secret key（`sb_secret_…`）と Gemini の API キーは、GitHub やブラウザ側の環境変数（`NEXT_PUBLIC_` 付き）に置かないこと。
 
 ## レシート読み取り（任意）
 
@@ -29,3 +38,7 @@ Next.js + Supabase + Google Apps Script。
 無料枠では、送った内容が Google の製品改善に使われる。レシートの写真が外部に送られることを理解したうえで使うこと。
 
 ローカル開発は `.env.local.example` を `.env.local` にコピーして `npm run dev`。
+
+## ライセンス
+
+MIT（`LICENSE`）。
