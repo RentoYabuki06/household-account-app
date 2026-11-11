@@ -24,11 +24,20 @@ const fmtDate = (iso: string) =>
     minute: "2-digit",
   });
 
+type Tab = "history" | "analysis" | "trend";
+const TAB_ORDER: Tab[] = ["history", "analysis", "trend"];
+
+// スワイプとみなす条件: 横に 60px 以上、かつ縦の動きの 1.5 倍以上
+const SWIPE_MIN_X = 60;
+const SWIPE_RATIO = 1.5;
+// 画面の端（ブラウザの「戻る」ジェスチャーと競合する範囲）から始まった操作は無視する
+const EDGE_GUARD = 24;
+
 const monthStart = (d: Date, offset = 0) => new Date(d.getFullYear(), d.getMonth() + offset, 1);
 
 export default function ExpenseApp() {
   const [month, setMonth] = useState(() => monthStart(new Date()));
-  const [tab, setTab] = useState<"history" | "analysis" | "trend">("history");
+  const [tab, setTab] = useState<Tab>("history");
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [prevExpenses, setPrevExpenses] = useState<Pick<Expense, "amount" | "category">[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,6 +55,38 @@ export default function ExpenseApp() {
   const [catError, setCatError] = useState<string | null>(null);
   const categoryNames = useMemo(() => categories.map((c) => c.name), [categories]);
   const colorOf = useMemo(() => makeColorOf(categories), [categories]);
+
+  const [slide, setSlide] = useState<"left" | "right" | null>(null);
+  const touch = useRef<{ x: number; y: number } | null>(null);
+
+  const goTab = (next: Tab) => {
+    if (next === tab) return;
+    setSlide(TAB_ORDER.indexOf(next) > TAB_ORDER.indexOf(tab) ? "left" : "right");
+    setTab(next);
+  };
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    const el = e.target as HTMLElement;
+    const blocked =
+      e.touches.length !== 1 ||
+      !!el.closest("input, select, textarea, [data-no-swipe]") ||
+      t.clientX < EDGE_GUARD ||
+      t.clientX > window.innerWidth - EDGE_GUARD;
+    touch.current = blocked ? null : { x: t.clientX, y: t.clientY };
+  };
+
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const start = touch.current;
+    touch.current = null;
+    if (!start) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Math.abs(dx) < SWIPE_MIN_X || Math.abs(dx) < Math.abs(dy) * SWIPE_RATIO) return;
+    const i = TAB_ORDER.indexOf(tab) + (dx < 0 ? 1 : -1); // 左へスワイプ → 次のタブ
+    if (i >= 0 && i < TAB_ORDER.length) goTab(TAB_ORDER[i]);
+  };
 
   const requestId = useRef(0);
 
@@ -161,7 +202,11 @@ export default function ExpenseApp() {
   };
 
   return (
-    <main className="mx-auto max-w-md pb-[env(safe-area-inset-bottom)]">
+    <main
+      className="mx-auto min-h-screen max-w-md pb-[env(safe-area-inset-bottom)]"
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+    >
       {/* Header */}
       <header className="bg-emerald-600 px-5 pb-5 pt-[calc(env(safe-area-inset-top)+1.5rem)] text-white">
         <div className="flex items-center justify-between">
@@ -198,7 +243,7 @@ export default function ExpenseApp() {
         ).map(([key, label]) => (
           <button
             key={key}
-            onClick={() => setTab(key)}
+            onClick={() => goTab(key)}
             className={`flex-1 py-3 text-sm font-semibold ${
               tab === key ? "border-b-2 border-emerald-600 text-emerald-700" : "text-slate-400"
             }`}
@@ -208,7 +253,10 @@ export default function ExpenseApp() {
         ))}
       </nav>
 
-      <div className="space-y-5 p-4">
+      <div
+        key={tab}
+        className={`space-y-5 p-4 ${slide === "left" ? "slide-in-left" : slide === "right" ? "slide-in-right" : ""}`}
+      >
         {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>}
 
         {tab === "trend" ? (

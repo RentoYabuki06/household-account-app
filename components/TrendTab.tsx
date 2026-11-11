@@ -115,7 +115,7 @@ export default function TrendTab({ colorOf, categoryNames }: Props) {
   return (
     <div className="space-y-4">
       {/* 切り替え: 合計 / カテゴリ */}
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
+      <div data-no-swipe className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
         {[TOTAL, ...seriesNames].map((n) => {
           const active = series === n;
           const color = n === TOTAL ? "#059669" : colorOf(n);
