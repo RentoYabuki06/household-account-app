@@ -1,13 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Trash2, Wallet } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, Wallet } from "lucide-react";
 import { supabase, type Expense, type PaymentMethod } from "@/lib/supabase";
+import { CATEGORIES, UNCATEGORIZED, colorOf } from "@/lib/categories";
+import { yen } from "@/lib/format";
+import AnalysisTab from "@/components/AnalysisTab";
 
 const METHODS: PaymentMethod[] = ["PayPay", "現金", "その他"];
-const CATEGORIES = ["食費", "日用品", "交通費", "趣味", "固定費", "その他"];
 
-const yen = (n: number) => `${n < 0 ? "-" : ""}¥${Math.abs(n).toLocaleString("ja-JP")}`;
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleString("ja-JP", {
     month: "numeric",
@@ -16,44 +17,57 @@ const fmtDate = (iso: string) =>
     minute: "2-digit",
   });
 
+const monthStart = (d: Date, offset = 0) => new Date(d.getFullYear(), d.getMonth() + offset, 1);
+
 export default function ExpenseApp() {
+  const [month, setMonth] = useState(() => monthStart(new Date()));
+  const [tab, setTab] = useState<"history" | "analysis">("history");
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [prevExpenses, setPrevExpenses] = useState<Pick<Expense, "amount" | "category">[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [amount, setAmount] = useState("");
   const [store, setStore] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("PayPay");
-  const [category, setCategory] = useState(CATEGORIES[0]);
+  const [category, setCategory] = useState<string>("食費");
   const [submitting, setSubmitting] = useState(false);
 
+  const requestId = useRef(0);
+
   const fetchExpenses = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("expenses")
-      .select("*")
-      .order("used_at", { ascending: false })
-      .limit(100);
-    if (error) setError(error.message);
+    const id = ++requestId.current;
+    const from = month.toISOString();
+    const to = monthStart(month, 1).toISOString();
+    const prevFrom = monthStart(month, -1).toISOString();
+
+    const [cur, prev] = await Promise.all([
+      supabase
+        .from("expenses")
+        .select("*")
+        .gte("used_at", from)
+        .lt("used_at", to)
+        .order("used_at", { ascending: false }),
+      supabase.from("expenses").select("amount,category").gte("used_at", prevFrom).lt("used_at", from),
+    ]);
+    if (id !== requestId.current) return; // 月を切り替えた後の古い応答は捨てる
+
+    if (cur.error || prev.error) setError((cur.error ?? prev.error)!.message);
     else {
       setError(null);
-      setExpenses(data as Expense[]);
+      setExpenses(cur.data as Expense[]);
+      setPrevExpenses(prev.data as Pick<Expense, "amount" | "category">[]);
     }
     setLoading(false);
-  }, []);
+  }, [month]);
 
   useEffect(() => {
+    setLoading(true);
     fetchExpenses();
   }, [fetchExpenses]);
 
-  const monthTotal = useMemo(() => {
-    const now = new Date();
-    return expenses
-      .filter((e) => {
-        const d = new Date(e.used_at);
-        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-      })
-      .reduce((sum, e) => sum + e.amount, 0);
-  }, [expenses]);
+  const monthTotal = useMemo(() => expenses.reduce((s, e) => s + e.amount, 0), [expenses]);
+  const isCurrentMonth = month.getTime() === monthStart(new Date()).getTime();
 
   const add = async (ev: React.FormEvent) => {
     ev.preventDefault();
@@ -72,7 +86,7 @@ export default function ExpenseApp() {
     if (error) return setError(error.message);
     setAmount("");
     setStore("");
-    await fetchExpenses();
+    setMonth(monthStart(new Date())); // 追加した支出が見えるよう、今月に切り替えて再取得する
   };
 
   const remove = async (id: string) => {
@@ -80,117 +94,199 @@ export default function ExpenseApp() {
     const { error } = await supabase.from("expenses").delete().eq("id", id);
     if (error) return setError(error.message);
     setExpenses((prev) => prev.filter((e) => e.id !== id));
+    fetchExpenses();
+  };
+
+  // カテゴリの変更。カード利用（自動）は店名のルールとして保存し、同じ店名の履歴もまとめて直す
+  const recategorize = async (e: Expense, newCategory: string) => {
+    if (e.source === "auto") {
+      const upd = await supabase
+        .from("expenses")
+        .update({ category: newCategory })
+        .eq("store", e.store)
+        .eq("source", "auto");
+      if (upd.error) return setError(upd.error.message);
+      const rule = await supabase
+        .from("category_rules")
+        .upsert({ keyword: e.store, category: newCategory });
+      if (rule.error) return setError(rule.error.message);
+    } else {
+      const upd = await supabase.from("expenses").update({ category: newCategory }).eq("id", e.id);
+      if (upd.error) return setError(upd.error.message);
+    }
+    fetchExpenses();
   };
 
   return (
     <main className="mx-auto max-w-md pb-[env(safe-area-inset-bottom)]">
       {/* Header */}
-      <header className="bg-emerald-600 px-5 pb-6 pt-[calc(env(safe-area-inset-top)+1.5rem)] text-white">
-        <p className="flex items-center gap-1.5 text-sm opacity-90">
-          <Wallet size={16} /> {new Date().getMonth() + 1}月の支出
-        </p>
-        <p className="mt-1 text-4xl font-bold tracking-tight">{yen(monthTotal)}</p>
+      <header className="bg-emerald-600 px-5 pb-5 pt-[calc(env(safe-area-inset-top)+1.5rem)] text-white">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => setMonth(monthStart(month, -1))}
+            aria-label="前の月"
+            className="p-1 opacity-80 active:opacity-100"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <p className="flex items-center gap-1.5 text-sm" suppressHydrationWarning>
+            <Wallet size={16} /> {month.getFullYear()}年{month.getMonth() + 1}月の支出
+          </p>
+          <button
+            onClick={() => setMonth(monthStart(month, 1))}
+            disabled={isCurrentMonth}
+            aria-label="次の月"
+            className="p-1 opacity-80 active:opacity-100 disabled:opacity-20"
+          >
+            <ChevronRight size={20} />
+          </button>
+        </div>
+        <p className="mt-1 text-center text-4xl font-bold tracking-tight">{yen(monthTotal)}</p>
       </header>
 
-      <div className="space-y-5 p-4">
-        {error && (
-          <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>
-        )}
-
-        {/* Quick Input Form */}
-        <form onSubmit={add} className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
-          <input
-            type="number"
-            inputMode="numeric"
-            min={1}
-            placeholder="金額"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            required
-            className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-lg outline-none focus:border-emerald-500"
-          />
-          <input
-            type="text"
-            placeholder="店舗 / メモ"
-            value={store}
-            onChange={(e) => setStore(e.target.value)}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2.5 outline-none focus:border-emerald-500"
-          />
-          <div className="flex gap-2">
-            {METHODS.map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMethod(m)}
-                className={`flex-1 rounded-lg py-2 text-sm font-medium ${
-                  method === m ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600"
-                }`}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 outline-none focus:border-emerald-500"
-          >
-            {CATEGORIES.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
+      {/* Tabs */}
+      <nav className="flex border-b border-slate-200 bg-white">
+        {(
+          [
+            ["history", "入力・履歴"],
+            ["analysis", "月次分析"],
+          ] as const
+        ).map(([key, label]) => (
           <button
-            type="submit"
-            disabled={submitting}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-600 py-3 font-semibold text-white active:bg-emerald-700 disabled:opacity-50"
+            key={key}
+            onClick={() => setTab(key)}
+            className={`flex-1 py-3 text-sm font-semibold ${
+              tab === key ? "border-b-2 border-emerald-600 text-emerald-700" : "text-slate-400"
+            }`}
           >
-            <Plus size={18} /> 追加
+            {label}
           </button>
-        </form>
+        ))}
+      </nav>
 
-        {/* Expense List */}
-        <section>
-          <h2 className="mb-2 px-1 text-sm font-semibold text-slate-500">履歴</h2>
-          {loading ? (
+      <div className="space-y-5 p-4">
+        {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+
+        {tab === "analysis" ? (
+          loading ? (
             <p className="p-4 text-center text-sm text-slate-400">読み込み中…</p>
-          ) : expenses.length === 0 ? (
-            <p className="p-4 text-center text-sm text-slate-400">まだ支出がありません</p>
           ) : (
-            <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl bg-white shadow-sm">
-              {expenses.map((e) => {
-                const auto = e.source === "auto";
-                return (
-                  <li key={e.id} className="flex items-center gap-3 px-4 py-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${
-                            auto ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"
-                          }`}
+            <AnalysisTab expenses={expenses} prevExpenses={prevExpenses} />
+          )
+        ) : (
+          <>
+            {/* Quick Input Form */}
+            <form onSubmit={add} className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                placeholder="金額"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                required
+                className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-lg outline-none focus:border-emerald-500"
+              />
+              <input
+                type="text"
+                placeholder="店舗 / メモ"
+                value={store}
+                onChange={(e) => setStore(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2.5 outline-none focus:border-emerald-500"
+              />
+              <div className="flex gap-2">
+                {METHODS.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setMethod(m)}
+                    className={`flex-1 rounded-lg py-2 text-sm font-medium ${
+                      method === m ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 outline-none focus:border-emerald-500"
+              >
+                {CATEGORIES.map((c) => (
+                  <option key={c}>{c}</option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-600 py-3 font-semibold text-white active:bg-emerald-700 disabled:opacity-50"
+              >
+                <Plus size={18} /> 追加
+              </button>
+            </form>
+
+            {/* Expense List */}
+            <section>
+              <h2 className="mb-2 px-1 text-sm font-semibold text-slate-500">履歴</h2>
+              {loading ? (
+                <p className="p-4 text-center text-sm text-slate-400">読み込み中…</p>
+              ) : expenses.length === 0 ? (
+                <p className="p-4 text-center text-sm text-slate-400">この月の支出はありません</p>
+              ) : (
+                <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl bg-white shadow-sm">
+                  {expenses.map((e) => {
+                    const auto = e.source === "auto";
+                    const cat = e.category || UNCATEGORIZED;
+                    return (
+                      <li key={e.id} className="flex items-center gap-3 px-4 py-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                                auto ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"
+                              }`}
+                            >
+                              {auto ? "自動" : "手入力"}
+                            </span>
+                            <span className="truncate font-medium">{e.store}</span>
+                          </div>
+                          <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
+                            <span>
+                              {fmtDate(e.used_at)} ・ {e.payment_method}
+                            </span>
+                            <select
+                              value={cat}
+                              onChange={(ev) => recategorize(e, ev.target.value)}
+                              aria-label="カテゴリ"
+                              style={{ background: colorOf(cat) }}
+                              className="max-w-[9rem] shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
+                            >
+                              <option value={UNCATEGORIZED}>{UNCATEGORIZED}</option>
+                              {CATEGORIES.map((c) => (
+                                <option key={c} value={c}>
+                                  {c}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <span className="shrink-0 font-semibold">{yen(e.amount)}</span>
+                        <button
+                          onClick={() => remove(e.id)}
+                          aria-label="削除"
+                          className="shrink-0 p-1.5 text-slate-300 active:text-red-500"
                         >
-                          {auto ? "自動" : "手入力"}
-                        </span>
-                        <span className="truncate font-medium">{e.store}</span>
-                      </div>
-                      <p className="mt-0.5 text-xs text-slate-400">
-                        {fmtDate(e.used_at)} ・ {e.payment_method}
-                        {e.category && e.category !== "未分類" ? ` ・ ${e.category}` : ""}
-                      </p>
-                    </div>
-                    <span className="shrink-0 font-semibold">{yen(e.amount)}</span>
-                    <button
-                      onClick={() => remove(e.id)}
-                      aria-label="削除"
-                      className="shrink-0 p-1.5 text-slate-300 active:text-red-500"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
+                          <Trash2 size={18} />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+          </>
+        )}
       </div>
     </main>
   );
