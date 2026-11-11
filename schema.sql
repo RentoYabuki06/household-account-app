@@ -8,6 +8,7 @@ create table if not exists public.expenses (
   payment_method text        check (payment_method in ('三井住友カード', 'PayPay', '現金', 'その他')),
   source         text        check (source in ('auto', 'manual')),
   memo           text,
+  source_id      text unique, -- Gmail のメッセージ ID（自動取り込みの重複防止。手入力は null）
   created_at     timestamptz default now()
 );
 
