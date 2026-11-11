@@ -1,13 +1,14 @@
 "use client";
 
 import { useMemo } from "react";
-import { colorOf, UNCATEGORIZED } from "@/lib/categories";
+import { UNCATEGORIZED } from "@/lib/categories";
 import { yen } from "@/lib/format";
 import type { Expense } from "@/lib/supabase";
 
 type Props = {
   expenses: Pick<Expense, "amount" | "category">[];
   prevExpenses: Pick<Expense, "amount" | "category">[];
+  colorOf: (category: string) => string;
 };
 
 const sumByCategory = (rows: Props["expenses"]) => {
@@ -19,7 +20,7 @@ const sumByCategory = (rows: Props["expenses"]) => {
   return m;
 };
 
-export default function AnalysisTab({ expenses, prevExpenses }: Props) {
+export default function AnalysisTab({ expenses, prevExpenses, colorOf }: Props) {
   const { rows, total, prevTotal } = useMemo(() => {
     const cur = sumByCategory(expenses);
     const prev = sumByCategory(prevExpenses);

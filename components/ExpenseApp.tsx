@@ -3,9 +3,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus, Trash2, Wallet } from "lucide-react";
 import { supabase, type Expense, type PaymentMethod } from "@/lib/supabase";
-import { CATEGORIES, UNCATEGORIZED, colorOf } from "@/lib/categories";
+import {
+  DEFAULT_CATEGORIES,
+  UNCATEGORIZED,
+  makeColorOf,
+  pickNewColor,
+  type Category,
+} from "@/lib/categories";
 import { yen } from "@/lib/format";
 import AnalysisTab from "@/components/AnalysisTab";
+import TrendTab from "@/components/TrendTab";
 
 const METHODS: PaymentMethod[] = ["PayPay", "現金", "その他"];
 
@@ -21,7 +28,7 @@ const monthStart = (d: Date, offset = 0) => new Date(d.getFullYear(), d.getMonth
 
 export default function ExpenseApp() {
   const [month, setMonth] = useState(() => monthStart(new Date()));
-  const [tab, setTab] = useState<"history" | "analysis">("history");
+  const [tab, setTab] = useState<"history" | "analysis" | "trend">("history");
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [prevExpenses, setPrevExpenses] = useState<Pick<Expense, "amount" | "category">[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,6 +39,13 @@ export default function ExpenseApp() {
   const [method, setMethod] = useState<PaymentMethod>("PayPay");
   const [category, setCategory] = useState<string>("食費");
   const [submitting, setSubmitting] = useState(false);
+
+  const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
+  const [addingCat, setAddingCat] = useState(false);
+  const [newCatName, setNewCatName] = useState("");
+  const [catError, setCatError] = useState<string | null>(null);
+  const categoryNames = useMemo(() => categories.map((c) => c.name), [categories]);
+  const colorOf = useMemo(() => makeColorOf(categories), [categories]);
 
   const requestId = useRef(0);
 
@@ -66,6 +80,18 @@ export default function ExpenseApp() {
     fetchExpenses();
   }, [fetchExpenses]);
 
+  // カテゴリ一覧は DB から取得する。取得できなければ既定値のまま
+  useEffect(() => {
+    supabase
+      .from("categories")
+      .select("name,color")
+      .order("sort_order")
+      .order("created_at")
+      .then(({ data, error }) => {
+        if (!error && data && data.length > 0) setCategories(data as Category[]);
+      });
+  }, []);
+
   const monthTotal = useMemo(() => expenses.reduce((s, e) => s + e.amount, 0), [expenses]);
   const isCurrentMonth = month.getTime() === monthStart(new Date()).getTime();
 
@@ -87,6 +113,23 @@ export default function ExpenseApp() {
     setAmount("");
     setStore("");
     setMonth(monthStart(new Date())); // 追加した支出が見えるよう、今月に切り替えて再取得する
+  };
+
+  const addCategory = async () => {
+    const name = newCatName.trim();
+    if (name.length < 1 || name.length > 20) return setCatError("名前は1〜20文字で入力してください");
+    if (name === UNCATEGORIZED || categoryNames.includes(name))
+      return setCatError("同じ名前のカテゴリがあります");
+    const color = pickNewColor(categories.map((c) => c.color));
+    const { error } = await supabase
+      .from("categories")
+      .insert({ name, color, sort_order: categories.length + 1 });
+    if (error) return setCatError(error.message);
+    setCategories([...categories, { name, color }]);
+    setCategory(name);
+    setNewCatName("");
+    setCatError(null);
+    setAddingCat(false);
   };
 
   const remove = async (id: string) => {
@@ -150,6 +193,7 @@ export default function ExpenseApp() {
           [
             ["history", "入力・履歴"],
             ["analysis", "月次分析"],
+            ["trend", "月次推移"],
           ] as const
         ).map(([key, label]) => (
           <button
@@ -167,11 +211,13 @@ export default function ExpenseApp() {
       <div className="space-y-5 p-4">
         {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>}
 
-        {tab === "analysis" ? (
+        {tab === "trend" ? (
+          <TrendTab colorOf={colorOf} categoryNames={categoryNames} />
+        ) : tab === "analysis" ? (
           loading ? (
             <p className="p-4 text-center text-sm text-slate-400">読み込み中…</p>
           ) : (
-            <AnalysisTab expenses={expenses} prevExpenses={prevExpenses} />
+            <AnalysisTab expenses={expenses} prevExpenses={prevExpenses} colorOf={colorOf} />
           )
         ) : (
           <>
@@ -208,15 +254,56 @@ export default function ExpenseApp() {
                   </button>
                 ))}
               </div>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 outline-none focus:border-emerald-500"
-              >
-                {CATEGORIES.map((c) => (
-                  <option key={c}>{c}</option>
-                ))}
-              </select>
+              <div className="flex gap-2">
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2.5 outline-none focus:border-emerald-500"
+                >
+                  {categoryNames.map((c) => (
+                    <option key={c}>{c}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAddingCat(!addingCat);
+                    setCatError(null);
+                  }}
+                  aria-label="カテゴリを追加"
+                  className="shrink-0 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-600 active:bg-slate-50"
+                >
+                  ＋カテゴリ
+                </button>
+              </div>
+              {addingCat && (
+                <div className="space-y-1">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      maxLength={20}
+                      placeholder="新しいカテゴリ名"
+                      value={newCatName}
+                      onChange={(e) => setNewCatName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                          e.preventDefault();
+                          addCategory();
+                        }
+                      }}
+                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={addCategory}
+                      className="shrink-0 rounded-lg bg-slate-800 px-3 text-sm font-medium text-white active:bg-slate-700"
+                    >
+                      作成
+                    </button>
+                  </div>
+                  {catError && <p className="text-xs text-red-600">{catError}</p>}
+                </div>
+              )}
               <button
                 type="submit"
                 disabled={submitting}
@@ -263,11 +350,14 @@ export default function ExpenseApp() {
                               className="max-w-[9rem] shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
                             >
                               <option value={UNCATEGORIZED}>{UNCATEGORIZED}</option>
-                              {CATEGORIES.map((c) => (
+                              {categoryNames.map((c) => (
                                 <option key={c} value={c}>
                                   {c}
                                 </option>
                               ))}
+                              {cat !== UNCATEGORIZED && !categoryNames.includes(cat) && (
+                                <option value={cat}>{cat}</option>
+                              )}
                             </select>
                           </div>
                         </div>
