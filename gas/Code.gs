@@ -135,14 +135,15 @@ function parseBody_(body) {
   // 実メール: ◇利用日：2026/11/10 12:56 / ◇利用先：... / ◇利用金額：450円
   var dateM = body.match(/利用日(?:時)?[：:]\s*(\d{4})[\/年\-](\d{1,2})[\/月\-](\d{1,2})日?\s*(\d{1,2}):(\d{2})/);
   var storeM = body.match(/利用先[：:]\s*(.+)/);
-  var amountM = body.match(/利用金額[：:]\s*([\d,，]+)/);
+  // 返品は ◇利用金額：-24,200円 のようにマイナスで届く
+  var amountM = body.match(/利用金額[：:]\s*([-−－]?[\d,，]+)/);
   if (!dateM || !storeM || !amountM) return null;
 
   var pad = function (n) { return ('0' + n).slice(-2); };
   var usedAt = dateM[1] + '-' + pad(dateM[2]) + '-' + pad(dateM[3]) +
     'T' + pad(dateM[4]) + ':' + dateM[5] + ':00+09:00'; // JST
 
-  var amount = parseInt(amountM[1].replace(/[,，]/g, ''), 10);
+  var amount = parseInt(amountM[1].replace(/[−－]/g, '-').replace(/[,，]/g, ''), 10);
   if (isNaN(amount)) return null;
 
   // 全角英数（例: ＡＭＡＺＯＮ．ＣＯ．ＪＰ）を半角に正規化

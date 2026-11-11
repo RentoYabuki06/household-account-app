@@ -7,7 +7,7 @@ import { supabase, type Expense, type PaymentMethod } from "@/lib/supabase";
 const METHODS: PaymentMethod[] = ["PayPay", "現金", "その他"];
 const CATEGORIES = ["食費", "日用品", "交通費", "趣味", "固定費", "その他"];
 
-const yen = (n: number) => `¥${n.toLocaleString("ja-JP")}`;
+const yen = (n: number) => `${n < 0 ? "-" : ""}¥${Math.abs(n).toLocaleString("ja-JP")}`;
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleString("ja-JP", {
     month: "numeric",
