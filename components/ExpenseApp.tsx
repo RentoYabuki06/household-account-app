@@ -186,6 +186,24 @@ export default function ExpenseApp() {
     });
   };
 
+  // 月次分析のカレンダーから、指定した日の支出を追加する。成功なら null、失敗ならメッセージを返す
+  const addForDay = async (
+    dateStr: string,
+    v: { amount: number; store: string; category: string; method: PaymentMethod }
+  ) => {
+    const { error } = await supabase.from("expenses").insert({
+      used_at: toUsedAt(dateStr, null),
+      store: v.store.trim() || v.category,
+      amount: v.amount,
+      category: v.category,
+      payment_method: v.method,
+      source: "manual",
+    });
+    if (error) return error.message;
+    await fetchExpenses();
+    return null;
+  };
+
   // レシートの読み取り結果を、入力フォームに反映する（確認・編集してから「追加」を押す）
   const applyReceipt = (r: ReceiptResult, previewUrl: string) => {
     const notes: string[] = [];
@@ -324,7 +342,14 @@ export default function ExpenseApp() {
           loading ? (
             <p className="p-4 text-center text-sm text-slate-400">読み込み中…</p>
           ) : (
-            <AnalysisTab expenses={expenses} month={month} colorOf={colorOf} />
+            <AnalysisTab
+              expenses={expenses}
+              month={month}
+              colorOf={colorOf}
+              categoryNames={categoryNames}
+              methods={METHODS}
+              onAdd={addForDay}
+            />
           )
         ) : (
           <>
