@@ -9,7 +9,7 @@
  *
  * 使い方:
  *   1. backfillSmbcMails() を実行 ... 過去の通知をまとめて取り込む（時間切れなら再実行で続きから）
- *   2. setupTrigger() を一度実行 ... 以後 10 分おきに新着を自動取り込み
+ *   2. setupTrigger() を一度実行 ... 以後 1 日 1 回（朝 6 時台）に新着を自動取り込み
  *
  * 二重登録の防止: Gmail のメッセージ ID を source_id に保存し、同じ ID は無視する（Supabase 側の unique 制約）。
  */
@@ -20,7 +20,7 @@ var SUBJECT_KEYWORD = 'ご利用のお知らせ';
 var SEARCH_QUERY = 'label:unread from:' + SENDER + ' subject:"' + SUBJECT_KEYWORD + '"';
 var BACKFILL_QUERY = 'from:' + SENDER + ' subject:"' + SUBJECT_KEYWORD + '"'; // 既読・未読を問わない
 
-/** 新着（未読）を取り込む。10 分おきのトリガーから呼ばれる */
+/** 新着（未読）を取り込む。1 日 1 回のトリガーから呼ばれる */
 function syncSmbcMails() {
   var threads = GmailApp.search(SEARCH_QUERY, 0, 50);
   threads.forEach(function (thread) {
@@ -152,10 +152,10 @@ function parseBody_(body) {
   return { usedAt: usedAt, store: store, amount: amount };
 }
 
-/** 一度だけ実行: 10 分おきのトリガー登録 */
+/** 一度だけ実行: 1 日 1 回（朝 6 時台）のトリガー登録。既存のトリガーは置き換える */
 function setupTrigger() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'syncSmbcMails') ScriptApp.deleteTrigger(t);
   });
-  ScriptApp.newTrigger('syncSmbcMails').timeBased().everyMinutes(10).create();
+  ScriptApp.newTrigger('syncSmbcMails').timeBased().everyDays(1).atHour(6).create();
 }
