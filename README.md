@@ -3,6 +3,10 @@
 三井住友カードの利用通知メールを GAS で自動取り込みし、PayPay・現金は手入力できる PWA 家計簿。
 Next.js + Supabase + Google Apps Script。
 
+<p align="center">
+  <img src="docs/screenshot-trend.png" alt="月次推移タブの画面（金額はモザイク）" width="320">
+</p>
+
 ## 使う前に必ず読むこと
 
 > **このアプリにはログインがありません。** 自分でデプロイした Vercel の URL を知っている人は、誰でも支出（金額・店名・日付）を閲覧・追加・編集・削除できます。
