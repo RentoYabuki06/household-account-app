@@ -13,14 +13,32 @@ create table if not exists public.expenses (
 
 create index if not exists expenses_used_at_idx on public.expenses (used_at desc);
 
--- Row Level Security: ログイン済み(authenticated)ユーザーのみ操作可能。
--- anon キー単体ではアクセスできない。
--- 重要: Supabase ダッシュボードの Authentication > Sign In / Providers で
---       「Allow new users to sign up」を OFF にし、自分のユーザーは手動で作成すること。
---       サインアップが開いていると、誰でも authenticated になれてしまう。
+-- Row Level Security: Google ログイン済みかつ allowed_users に載ったメールのみ操作可能。
+-- anon キー単体、および許可リスト外の Google アカウントではアクセスできない。
 -- GAS からの書き込みは service_role キー（RLS をバイパス）を使う。
+-- 作成後に自分の Gmail を手動登録すること（メールはリポジトリに書かない）:
+--   insert into public.allowed_users (email) values ('あなたのGmail');
+create table if not exists public.allowed_users (email text primary key);
+alter table public.allowed_users enable row level security; -- ポリシーなし = クライアントからは読み書き不可
+
+create or replace function public.is_allowed()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1 from public.allowed_users
+    where lower(email) = lower(auth.jwt() ->> 'email')
+  );
+$$;
+
+revoke all on function public.is_allowed() from public, anon;
+grant execute on function public.is_allowed() to authenticated;
+
 alter table public.expenses enable row level security;
 
-create policy "authenticated select" on public.expenses for select to authenticated using (true);
-create policy "authenticated insert" on public.expenses for insert to authenticated with check (true);
-create policy "authenticated delete" on public.expenses for delete to authenticated using (true);
+create policy "allowed select" on public.expenses for select to authenticated using (public.is_allowed());
+create policy "allowed insert" on public.expenses for insert to authenticated with check (public.is_allowed());
+create policy "allowed delete" on public.expenses for delete to authenticated using (public.is_allowed());
