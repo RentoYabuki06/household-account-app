@@ -13,13 +13,14 @@ create table if not exists public.expenses (
 
 create index if not exists expenses_used_at_idx on public.expenses (used_at desc);
 
--- Row Level Security
--- 注意: anon キーはフロントエンドに公開されます。以下のポリシーは
--- 「anon キーを知っている人は全操作可能」という個人利用向けの緩い設定です。
--- 他人に URL を知られたくない場合は Supabase Auth を導入し、
--- to authenticated に変更してください。
+-- Row Level Security: ログイン済み(authenticated)ユーザーのみ操作可能。
+-- anon キー単体ではアクセスできない。
+-- 重要: Supabase ダッシュボードの Authentication > Sign In / Providers で
+--       「Allow new users to sign up」を OFF にし、自分のユーザーは手動で作成すること。
+--       サインアップが開いていると、誰でも authenticated になれてしまう。
+-- GAS からの書き込みは service_role キー（RLS をバイパス）を使う。
 alter table public.expenses enable row level security;
 
-create policy "anon select" on public.expenses for select to anon using (true);
-create policy "anon insert" on public.expenses for insert to anon with check (true);
-create policy "anon delete" on public.expenses for delete to anon using (true);
+create policy "authenticated select" on public.expenses for select to authenticated using (true);
+create policy "authenticated insert" on public.expenses for insert to authenticated with check (true);
+create policy "authenticated delete" on public.expenses for delete to authenticated using (true);

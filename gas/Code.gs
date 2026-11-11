@@ -3,7 +3,8 @@
  *
  * 事前設定: GAS エディタの「プロジェクトの設定 > スクリプト プロパティ」に
  *   SUPABASE_URL      例: https://xxxx.supabase.co
- *   SUPABASE_ANON_KEY Supabase の anon public key
+ *   SUPABASE_SERVICE_ROLE_KEY Supabase の service_role key（RLS をバイパスする秘密鍵。
+ *                             フロントエンドや GitHub には絶対に置かない。GAS のスクリプト プロパティだけに保存）
  * を登録。その後 setupTrigger() を一度実行すると 10 分おきに自動実行されます。
  */
 
@@ -13,8 +14,8 @@ var SEARCH_QUERY = 'label:unread from:statement@vpass.ne.jp subject:"ご利用�
 function syncSmbcMails() {
   var props = PropertiesService.getScriptProperties();
   var url = props.getProperty('SUPABASE_URL');
-  var key = props.getProperty('SUPABASE_ANON_KEY');
-  if (!url || !key) throw new Error('SUPABASE_URL / SUPABASE_ANON_KEY が未設定です');
+  var key = props.getProperty('SUPABASE_SERVICE_ROLE_KEY');
+  if (!url || !key) throw new Error('SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY が未設定です');
 
   var threads = GmailApp.search(SEARCH_QUERY, 0, 50);
   threads.forEach(function (thread) {
