@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus, Trash2, Wallet } from "lucide-react";
-import { supabase, type Expense, type PaymentMethod } from "@/lib/supabase";
+import { supabase, type Expense } from "@/lib/supabase";
 import {
   DEFAULT_CATEGORIES,
   UNCATEGORIZED,
@@ -14,8 +14,6 @@ import { yen } from "@/lib/format";
 import AnalysisTab from "@/components/AnalysisTab";
 import TrendTab from "@/components/TrendTab";
 import ReceiptScanner, { type ReceiptResult } from "@/components/ReceiptScanner";
-
-const METHODS: PaymentMethod[] = ["PayPay", "現金", "その他"];
 
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleString("ja-JP", {
@@ -57,7 +55,6 @@ export default function ExpenseApp() {
 
   const [amount, setAmount] = useState("");
   const [store, setStore] = useState("");
-  const [method, setMethod] = useState<PaymentMethod>("PayPay");
   const [category, setCategory] = useState<string>("食費");
   const [usedDate, setUsedDate] = useState(() => toDateStr(new Date()));
   const [usedTime, setUsedTime] = useState<string | null>(null); // レシートから読み取った時刻（手入力のときは null）
@@ -168,7 +165,7 @@ export default function ExpenseApp() {
       store: store.trim() || category,
       amount: n,
       category,
-      payment_method: method,
+      payment_method: "その他",
       source: "manual",
     });
     setSubmitting(false);
@@ -189,14 +186,14 @@ export default function ExpenseApp() {
   // 月次分析のカレンダーから、指定した日の支出を追加する。成功なら null、失敗ならメッセージを返す
   const addForDay = async (
     dateStr: string,
-    v: { amount: number; store: string; category: string; method: PaymentMethod }
+    v: { amount: number; store: string; category: string }
   ) => {
     const { error } = await supabase.from("expenses").insert({
       used_at: toUsedAt(dateStr, null),
       store: v.store.trim() || v.category,
       amount: v.amount,
       category: v.category,
-      payment_method: v.method,
+      payment_method: "その他",
       source: "manual",
     });
     if (error) return error.message;
@@ -219,12 +216,9 @@ export default function ExpenseApp() {
     }
     if (r.category && categoryNames.includes(r.category)) setCategory(r.category);
     if (r.payment_method === "クレジットカード") {
-      setMethod("その他");
       notes.push(
         "支払いがクレジットカードです。三井住友カードなら Gmail の自動取り込みと二重になるので、追加しないでください"
       );
-    } else if (r.payment_method && METHODS.includes(r.payment_method as PaymentMethod)) {
-      setMethod(r.payment_method as PaymentMethod);
     }
     setScanNotes(notes);
     setReceiptPreview((prev) => {
@@ -347,7 +341,6 @@ export default function ExpenseApp() {
               month={month}
               colorOf={colorOf}
               categoryNames={categoryNames}
-              methods={METHODS}
               onAdd={addForDay}
             />
           )
@@ -404,20 +397,6 @@ export default function ExpenseApp() {
                 aria-label="日付"
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 outline-none focus:border-emerald-500"
               />
-              <div className="flex gap-2">
-                {METHODS.map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => setMethod(m)}
-                    className={`flex-1 rounded-lg py-2 text-sm font-medium ${
-                      method === m ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600"
-                    }`}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
               <div className="flex gap-2">
                 <select
                   value={category}

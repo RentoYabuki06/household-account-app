@@ -4,17 +4,16 @@ import { useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { UNCATEGORIZED } from "@/lib/categories";
 import { yen } from "@/lib/format";
-import type { Expense, PaymentMethod } from "@/lib/supabase";
+import type { Expense } from "@/lib/supabase";
 
 type Props = {
   expenses: Expense[];
   month: Date;
   colorOf: (category: string) => string;
   categoryNames: string[];
-  methods: PaymentMethod[];
   onAdd: (
     dateStr: string,
-    v: { amount: number; store: string; category: string; method: PaymentMethod }
+    v: { amount: number; store: string; category: string }
   ) => Promise<string | null>;
 };
 
@@ -53,12 +52,11 @@ const labelFor = (name: string, pct: number) => {
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
-export default function AnalysisTab({ expenses, month, colorOf, categoryNames, methods, onAdd }: Props) {
+export default function AnalysisTab({ expenses, month, colorOf, categoryNames, onAdd }: Props) {
   const [selected, setSelected] = useState<number | null>(null); // 内訳を開いている日
   const [amount, setAmount] = useState("");
   const [store, setStore] = useState("");
   const [category, setCategory] = useState("");
-  const [method, setMethod] = useState<PaymentMethod>(methods[0]);
   const [submitting, setSubmitting] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
@@ -195,7 +193,7 @@ export default function AnalysisTab({ expenses, month, colorOf, categoryNames, m
                 setSubmitting(true);
                 setAddError(null);
                 const dateStr = `${month.getFullYear()}-${pad2(month.getMonth() + 1)}-${pad2(selected)}`;
-                const err = await onAdd(dateStr, { amount: n, store, category: category || categoryNames[0], method });
+                const err = await onAdd(dateStr, { amount: n, store, category: category || categoryNames[0] });
                 setSubmitting(false);
                 if (err) return setAddError(err);
                 setAmount("");
@@ -231,16 +229,6 @@ export default function AnalysisTab({ expenses, month, colorOf, categoryNames, m
                 >
                   {categoryNames.map((c) => (
                     <option key={c}>{c}</option>
-                  ))}
-                </select>
-                <select
-                  value={method}
-                  onChange={(e) => setMethod(e.target.value as PaymentMethod)}
-                  className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm"
-                  aria-label="支払い方法"
-                >
-                  {methods.map((m) => (
-                    <option key={m}>{m}</option>
                   ))}
                 </select>
                 <button
