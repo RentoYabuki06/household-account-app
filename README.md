@@ -4,7 +4,9 @@
 Next.js + Supabase + Google Apps Script。
 
 <p align="center">
-  <img src="docs/screenshot-trend.png" alt="月次推移タブの画面（金額はモザイク）" width="320">
+  <img src="docs/screenshot-input.png" alt="入力・履歴タブの画面（金額はモザイク）" width="240">
+  <img src="docs/screenshot-analysis.png" alt="月次分析タブの画面（金額はモザイク）" width="240">
+  <img src="docs/screenshot-trend.png" alt="月次推移タブの画面（金額はモザイク）" width="240">
 </p>
 
 ## 機能
