@@ -5,7 +5,7 @@ create table if not exists public.expenses (
   store          text        not null,
   amount         integer     not null,
   category       text        default '未分類',
-  payment_method text        check (payment_method in ('三井住友カード', 'PayPay', '現金', 'その他')),
+  payment_method text        check (payment_method in ('三井住友カード', '三井住友銀行', 'PayPay', '現金', 'その他')),
   source         text        check (source in ('auto', 'manual')),
   memo           text,
   source_id      text unique, -- Gmail のメッセージ ID（自動取り込みの重複防止。手入力は null）
@@ -101,7 +101,9 @@ insert into public.category_rules (keyword, category) values
   ('クリニック', '医療費'), ('病院', '医療費'), ('医院', '医療費'), ('薬局', '医療費'),
   ('歯科', '医療費'), ('皮膚科', '医療費'), ('内科', '医療費'), ('調剤', '医療費'),
   ('美容室', '美容'), ('美容院', '美容'), ('ヘアサロン', '美容'), ('SALON', '美容'),
-  ('ネイル', '美容'), ('エステ', '美容'), ('理容', '美容'), ('QB HOUSE', '美容'), ('QBハウス', '美容')
+  ('ネイル', '美容'), ('エステ', '美容'), ('理容', '美容'), ('QB HOUSE', '美容'), ('QBハウス', '美容'),
+  ('水道料', '水道光熱費'), ('水道局', '水道光熱費'), ('電力', '水道光熱費'),
+  ('東京ガス', '水道光熱費'), ('大阪ガス', '水道光熱費')
 on conflict (keyword) do nothing;
 
 -- 既存の未分類の行にも、ルールを当てはめる
@@ -137,7 +139,7 @@ insert into public.categories (name, color, sort_order) values
   ('コーヒー', '#92400e', 1), ('食費', '#ea580c', 2), ('日用品', '#0d9488', 3),
   ('書籍', '#2563eb', 4), ('交通費', '#7c3aed', 5), ('交際費', '#db2777', 6),
   ('サブスクリプション', '#0891b2', 7), ('医療費', '#dc2626', 8), ('美容', '#c026d3', 9),
-  ('その他', '#64748b', 10)
+  ('その他', '#64748b', 10), ('水道光熱費', '#ca8a04', 11)
 on conflict (name) do nothing;
 
 -- ===== レシート読み取りの回数の上限（migrations/008_receipt_scan_limit.sql と同じ内容）=====

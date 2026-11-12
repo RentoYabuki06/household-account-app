@@ -5,7 +5,7 @@ export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-export type PaymentMethod = "三井住友カード" | "PayPay" | "現金" | "その他";
+export type PaymentMethod = "三井住友カード" | "三井住友銀行" | "PayPay" | "現金" | "その他";
 
 export type Expense = {
   id: string;
